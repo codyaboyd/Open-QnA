@@ -30,65 +30,142 @@ Indexes improve query speed but can slow writes because the index must be update
 function sentenceSplit(text) {
   return text
     .split(/(?<=[.!?])\s+|\n+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+    .map((s) => s.trim().replace(/\s+/g, ' '))
+    .filter(Boolean)
+    .filter((s) => s.length > 12);
 }
 
 function unique(array) {
   return [...new Set(array)];
 }
 
-function makeQA(sentence) {
-  const words = sentence.split(' ');
-  const lead = words.slice(0, Math.min(5, words.length)).join(' ');
+function clamp(value, min, max, fallback) {
+  const n = Number(value);
+  if (Number.isNaN(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function toSourceSpan(sentence, sourceText) {
+  const idx = sourceText.indexOf(sentence);
+  if (idx === -1) return 'Not found';
+  return `char:${idx}-${idx + sentence.length}`;
+}
+
+function sentenceKeywords(sentence) {
+  const stop = new Set([
+    'the',
+    'a',
+    'an',
+    'and',
+    'or',
+    'is',
+    'to',
+    'of',
+    'in',
+    'for',
+    'with',
+    'on',
+    'by',
+    'it',
+    'this',
+    'that',
+    'be',
+    'as',
+    'are'
+  ]);
+
+  return unique(
+    sentence
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 3 && !stop.has(w))
+  );
+}
+
+function chooseQuestionStem(sentence, difficulty) {
+  const keywords = sentenceKeywords(sentence);
+  const focus = keywords.slice(0, 2).join(' + ') || 'this idea';
+
+  if (difficulty === 'easy') {
+    return `According to the source, what is true about ${focus}?`;
+  }
+  if (difficulty === 'hard') {
+    return `Using evidence from the source, what is the strongest implication of ${focus}?`;
+  }
+  return `Based on the source, which statement best explains ${focus}?`;
+}
+
+function makeQA(sentence, difficulty, sourceText) {
   return {
     type: 'qa_pair',
-    question: `What is a key point about: "${lead}"?`,
-    answer: sentence
+    question: chooseQuestionStem(sentence, difficulty),
+    answer: sentence,
+    source_span: toSourceSpan(sentence, sourceText)
   };
 }
 
-function makeMCQ(sentence, idx) {
-  const fallbackChoices = [
-    'It describes a minor formatting preference.',
-    'It has no impact on system behavior.',
-    'It is unrelated to data modeling.',
-    'It focuses only on visual styling.'
+function makeDistractor(sentence, idx) {
+  const keywords = sentenceKeywords(sentence);
+  const topic = keywords[0] || 'the concept';
+
+  const templates = [
+    `${topic} is mostly cosmetic and does not influence outcomes.`,
+    `${topic} is optional and usually omitted in reliable systems.`,
+    `${topic} only matters when visual formatting is being changed.`,
+    `${topic} always reduces accuracy in practical use.`
   ];
 
-  const choicePool = unique([
-    sentence,
-    ...fallbackChoices.map((c, i) => `${c} (${idx + i + 1})`)
-  ]);
+  return templates[idx % templates.length];
+}
 
-  const choices = choicePool.slice(0, 4);
-  const answer = choices[0];
+function makeMCQ(sentence, sentencePool, sourceText) {
+  const related = sentencePool.filter((s) => s !== sentence).slice(0, 2);
+  const distractors = [
+    ...related.map((s) => s.replace(/\.$/, '').concat(' (misapplied context).')),
+    makeDistractor(sentence, sentence.length)
+  ].slice(0, 3);
+
+  const choices = unique([sentence, ...distractors]).slice(0, 4);
+
+  while (choices.length < 4) {
+    choices.push(makeDistractor(sentence, choices.length));
+  }
 
   return {
     type: 'mcq',
-    question: `Which statement best matches this concept from the source?`,
+    question: 'Which option is most faithful to the source passage?',
     choices,
-    answer,
-    explanation: 'The correct choice is directly grounded in the provided source sentence.'
+    answer: sentence,
+    explanation: 'The answer is the only choice that directly matches the source statement.',
+    source_span: toSourceSpan(sentence, sourceText)
   };
 }
 
-function makeShortWritten(sentence) {
+function makeShortWritten(sentence, difficulty, sourceText) {
+  const framing =
+    difficulty === 'easy'
+      ? 'In 2-3 sentences, restate this idea in plain language and include one example.'
+      : difficulty === 'hard'
+        ? 'In 3-4 sentences, explain this idea, one tradeoff, and one likely failure mode.'
+        : 'In 2-3 sentences, explain this idea and why it matters in practice.';
+
   return {
     type: 'short_written',
-    question: `In 2-3 sentences, explain this idea and why it matters: "${sentence}"`
+    question: `${framing} "${sentence}"`,
+    source_span: toSourceSpan(sentence, sourceText)
   };
 }
 
-function buildItems(sentences, count) {
+function buildItems(sentences, count, difficulty, sourceText) {
   const items = [];
   for (let i = 0; i < count; i += 1) {
     const sentence = sentences[i % sentences.length];
     const mode = i % 3;
 
-    if (mode === 0) items.push(makeQA(sentence));
-    if (mode === 1) items.push(makeMCQ(sentence, i));
-    if (mode === 2) items.push(makeShortWritten(sentence));
+    if (mode === 0) items.push(makeQA(sentence, difficulty, sourceText));
+    if (mode === 1) items.push(makeMCQ(sentence, sentences, sourceText));
+    if (mode === 2) items.push(makeShortWritten(sentence, difficulty, sourceText));
   }
   return items;
 }
@@ -98,18 +175,22 @@ function evaluate(items, sourceText) {
   const questions = items.map((x) => x.question.toLowerCase());
   const dupCount = questions.length - new Set(questions).size;
 
-  const faithfulnessHits = items.filter((item) => {
-    if (item.answer) {
-      return lower.includes(item.answer.slice(0, 18).toLowerCase());
-    }
-    return true;
+  const groundedAnswers = items.filter((item) => {
+    if (!item.answer) return true;
+    return lower.includes(item.answer.toLowerCase());
   }).length;
+
+  const sourceSpanCoverage = items.filter((i) => i.source_span && i.source_span !== 'Not found').length;
+  const mcqCount = items.filter((i) => i.type === 'mcq').length;
+  const strongMcqs = items
+    .filter((i) => i.type === 'mcq')
+    .filter((m) => m.choices?.length === 4 && unique(m.choices).length === 4 && m.choices.includes(m.answer)).length;
 
   return [
     {
       name: 'Faithfulness',
-      ok: faithfulnessHits === items.length,
-      detail: `${faithfulnessHits}/${items.length} answers appear anchored in source text.`
+      ok: groundedAnswers === items.length,
+      detail: `${groundedAnswers}/${items.length} items are directly grounded in source text.`
     },
     {
       name: 'Uniqueness',
@@ -117,9 +198,9 @@ function evaluate(items, sourceText) {
       detail: dupCount === 0 ? 'No duplicate prompts detected.' : `${dupCount} near-duplicate prompts found.`
     },
     {
-      name: 'Difficulty fit',
-      ok: true,
-      detail: `Questions tagged for ${els.difficulty.value} difficulty.`
+      name: 'Source citation coverage',
+      ok: sourceSpanCoverage === items.length,
+      detail: `${sourceSpanCoverage}/${items.length} items include source spans for traceability.`
     },
     {
       name: 'Format validity',
@@ -128,8 +209,8 @@ function evaluate(items, sourceText) {
     },
     {
       name: 'Distractor quality (MCQ)',
-      ok: items.filter((i) => i.type === 'mcq').every((m) => m.choices?.length === 4),
-      detail: 'Each MCQ has one answer and three distractors.'
+      ok: mcqCount === strongMcqs,
+      detail: `${strongMcqs}/${mcqCount || 1} MCQs include 4 unique options and one exact source-grounded answer.`
     }
   ];
 }
@@ -145,16 +226,18 @@ function renderChecklist(results) {
 function renderItems(items) {
   els.renderedItems.innerHTML = items
     .map((item) => {
+      const source = `<p class="small mb-0 text-white-75"><em>Source span: ${item.source_span || 'N/A'}</em></p>`;
+
       const body =
         item.type === 'mcq'
           ? `<p class="mb-1"><strong>Q:</strong> ${item.question}</p>
              <ol class="mb-1">${item.choices.map((c) => `<li>${c}</li>`).join('')}</ol>
              <p class="mb-1"><strong>Answer:</strong> ${item.answer}</p>
-             <p class="small mb-0 text-white-75"><em>${item.explanation}</em></p>`
+             <p class="small mb-1 text-white-75"><em>${item.explanation}</em></p>${source}`
           : item.type === 'qa_pair'
             ? `<p class="mb-1"><strong>Q:</strong> ${item.question}</p>
-               <p class="mb-0"><strong>A:</strong> ${item.answer}</p>`
-            : `<p class="mb-0"><strong>Prompt:</strong> ${item.question}</p>`;
+               <p class="mb-1"><strong>A:</strong> ${item.answer}</p>${source}`
+            : `<p class="mb-1"><strong>Prompt:</strong> ${item.question}</p>${source}`;
 
       return `<article class="result-card rounded p-3"><span class="badge badge-type mb-2 text-uppercase">${item.type}</span>${body}</article>`;
     })
@@ -163,7 +246,7 @@ function renderItems(items) {
 
 function buildPayload() {
   const inputText = els.sourceText.value.trim();
-  const count = Number(els.count.value) || 8;
+  const count = clamp(els.count.value, 3, 20, 8);
   const sentences = sentenceSplit(inputText);
 
   if (!inputText || sentences.length === 0) {
@@ -183,11 +266,11 @@ function buildPayload() {
       count,
       difficulty: els.difficulty.value,
       language: 'en',
-      temperature: Number(els.temperature.value)
+      temperature: clamp(els.temperature.value, 0, 1, 0.3)
     }
   };
 
-  const items = buildItems(sentences, count);
+  const items = buildItems(sentences, count, els.difficulty.value, inputText);
   const checklist = evaluate(items, inputText);
 
   return { payload, output: { items }, checklist };
@@ -213,23 +296,23 @@ function asMarkdown(items) {
   return items
     .map((item, i) => {
       if (item.type === 'qa_pair') {
-        return `### ${i + 1}. Q&A\n- **Question:** ${item.question}\n- **Answer:** ${item.answer}`;
+        return `### ${i + 1}. Q&A\n- **Question:** ${item.question}\n- **Answer:** ${item.answer}\n- **Source span:** ${item.source_span || 'N/A'}`;
       }
       if (item.type === 'mcq') {
         return `### ${i + 1}. MCQ\n- **Question:** ${item.question}\n- **Choices:**\n${item.choices
           .map((c, idx) => `  ${idx + 1}. ${c}`)
-          .join('\n')}\n- **Answer:** ${item.answer}\n- **Explanation:** ${item.explanation}`;
+          .join('\n')}\n- **Answer:** ${item.answer}\n- **Explanation:** ${item.explanation}\n- **Source span:** ${item.source_span || 'N/A'}`;
       }
-      return `### ${i + 1}. Short Written\n- **Prompt:** ${item.question}`;
+      return `### ${i + 1}. Short Written\n- **Prompt:** ${item.question}\n- **Source span:** ${item.source_span || 'N/A'}`;
     })
     .join('\n\n');
 }
 
 function asCsv(items) {
-  const header = 'type,question,answer,choices,explanation';
+  const header = 'type,question,answer,choices,explanation,source_span';
   const rows = items.map((i) => {
     const choices = i.choices ? i.choices.join(' | ') : '';
-    return [i.type, i.question, i.answer || '', choices, i.explanation || '']
+    return [i.type, i.question, i.answer || '', choices, i.explanation || '', i.source_span || '']
       .map((v) => `"${String(v).replaceAll('"', '""')}"`)
       .join(',');
   });
@@ -254,7 +337,7 @@ els.generateBtn.addEventListener('click', () => {
   renderChecklist(result.checklist);
   [els.jsonBtn, els.mdBtn, els.csvBtn].forEach((b) => (b.disabled = false));
 
-  setStatus('Generated successfully with deterministic local pipeline.', 'success');
+  setStatus('Generated successfully with stronger source-grounded fidelity checks.', 'success');
 });
 
 els.sampleBtn.addEventListener('click', () => {

@@ -14,8 +14,8 @@ This repository now includes a colorful Bootstrap 5 web app that demonstrates th
 - Ingest source content
 - Configure provider/model/options
 - Generate Q&A, MCQ, and short written items
-- Run quality checks
-- Export JSON / Markdown / CSV
+- Run quality checks with source-grounding and traceability checks
+- Export JSON / Markdown / CSV (including source spans)
 
 ### Run Locally
 
