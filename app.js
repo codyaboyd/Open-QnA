@@ -35,6 +35,77 @@ function sentenceSplit(text) {
     .filter((s) => s.length > 12);
 }
 
+function normalizeWhitespace(text) {
+  return text.replace(/\r\n/g, '\n').replace(/\t/g, ' ').replace(/\u00a0/g, ' ').replace(/[ ]{2,}/g, ' ').trim();
+}
+
+function normalizeForMatch(text) {
+  return text
+    .toLowerCase()
+    .replace(/[“”]/g, '"')
+    .replace(/[’]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function levenshtein(a, b) {
+  const m = a.length;
+  const n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i += 1) dp[i][0] = i;
+  for (let j = 0; j <= n; j += 1) dp[0][j] = j;
+  for (let i = 1; i <= m; i += 1) {
+    for (let j = 1; j <= n; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+  return dp[m][n];
+}
+
+function similarityRatio(a, b) {
+  if (!a || !b) return 0;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  return 1 - levenshtein(a, b) / maxLen;
+}
+
+function sentenceScore(sentence) {
+  const tokenCount = sentence.split(/\s+/).length;
+  const hasNumber = /\d/.test(sentence) ? 1 : 0;
+  const hasSignalWord = /(because|therefore|however|improves|reduces|requires|must|should)/i.test(sentence) ? 1 : 0;
+  return tokenCount + hasNumber * 2 + hasSignalWord * 3;
+}
+
+function chunkCorpus(text, maxChunkChars = 550) {
+  const normalized = normalizeWhitespace(text);
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const chunks = [];
+  let current = '';
+
+  paragraphs.forEach((paragraph) => {
+    if (!current) {
+      current = paragraph;
+      return;
+    }
+
+    if ((current + '\n\n' + paragraph).length <= maxChunkChars) {
+      current += `\n\n${paragraph}`;
+      return;
+    }
+
+    chunks.push(current);
+    current = paragraph;
+  });
+
+  if (current) chunks.push(current);
+  return chunks.length ? chunks : [normalized];
+}
+
 function unique(array) {
   return [...new Set(array)];
 }
@@ -47,8 +118,13 @@ function clamp(value, min, max, fallback) {
 
 function toSourceSpan(sentence, sourceText) {
   const idx = sourceText.indexOf(sentence);
-  if (idx === -1) return 'Not found';
-  return `char:${idx}-${idx + sentence.length}`;
+  if (idx !== -1) return `char:${idx}-${idx + sentence.length}`;
+
+  const normalizedSource = normalizeForMatch(sourceText);
+  const normalizedSentence = normalizeForMatch(sentence);
+  const relaxedIdx = normalizedSource.indexOf(normalizedSentence);
+  if (relaxedIdx !== -1) return `approx-char:${relaxedIdx}-${relaxedIdx + normalizedSentence.length}`;
+  return 'Not found';
 }
 
 function sentenceKeywords(sentence) {
@@ -158,9 +234,10 @@ function makeShortWritten(sentence, difficulty, sourceText) {
 }
 
 function buildItems(sentences, count, difficulty, sourceText) {
+  const ranked = [...sentences].sort((a, b) => sentenceScore(b) - sentenceScore(a));
   const items = [];
   for (let i = 0; i < count; i += 1) {
-    const sentence = sentences[i % sentences.length];
+    const sentence = ranked[i % ranked.length];
     const mode = i % 3;
 
     if (mode === 0) items.push(makeQA(sentence, difficulty, sourceText));
@@ -168,6 +245,23 @@ function buildItems(sentences, count, difficulty, sourceText) {
     if (mode === 2) items.push(makeShortWritten(sentence, difficulty, sourceText));
   }
   return items;
+}
+
+function prepareCorpus(sourceText) {
+  const chunks = chunkCorpus(sourceText);
+  const candidates = chunks
+    .flatMap((chunk) => sentenceSplit(chunk))
+    .map((sentence) => sentence.replace(/^[\-\*\d\.\)\s]+/, '').trim())
+    .filter((sentence) => sentence.length >= 18);
+
+  const deduped = [];
+  candidates.forEach((sentence) => {
+    const normalized = normalizeForMatch(sentence);
+    const nearDuplicate = deduped.some((existing) => similarityRatio(normalized, normalizeForMatch(existing)) > 0.92);
+    if (!nearDuplicate) deduped.push(sentence);
+  });
+
+  return deduped.sort((a, b) => sentenceScore(b) - sentenceScore(a));
 }
 
 function evaluate(items, sourceText) {
@@ -245,12 +339,16 @@ function renderItems(items) {
 }
 
 function buildPayload() {
-  const inputText = els.sourceText.value.trim();
+  const inputText = normalizeWhitespace(els.sourceText.value);
   const count = clamp(els.count.value, 3, 20, 8);
-  const sentences = sentenceSplit(inputText);
+  const sentences = prepareCorpus(inputText);
 
   if (!inputText || sentences.length === 0) {
     setStatus('Please provide source material before generating.', 'warning');
+    return null;
+  }
+  if (sentences.length < 2) {
+    setStatus('Need a richer corpus: provide at least 2 informative sentences for robust generation.', 'warning');
     return null;
   }
 
@@ -260,7 +358,11 @@ function buildPayload() {
     task: 'qa_pairs | mcq | short_written',
     input: {
       title: els.title.value.trim() || 'Untitled',
-      text: inputText
+      text: inputText,
+      corpus_stats: {
+        chunks: chunkCorpus(inputText).length,
+        candidate_sentences: sentences.length
+      }
     },
     options: {
       count,
