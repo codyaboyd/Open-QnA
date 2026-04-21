@@ -1,96 +1,62 @@
 # Open-QnA
 
-Open-QnA is a configurable system for turning source information into educational assessment content.
+Open-QnA is an open-source, provider-agnostic system for transforming source content into educational assessment artifacts.
 
 It can generate:
 - **Question-and-answer (Q&A) pairs**
 - **Multiple-choice questions (MCQs)**
-- **Short written questions** (free-response prompts)
+- **Short written prompts** (free-response)
 
-## Web App (Bootstrap 5)
+## Why this project
 
-This repository now includes a colorful Bootstrap 5 web app that demonstrates the full Open-QnA flow from the README:
+Open-QnA focuses on practical quality constraints for generated learning content:
 
-- Ingest source content
-- Configure provider/model/options
-- Generate Q&A, MCQ, and short written items
-- Run quality checks with source-grounding and traceability checks
-- Export JSON / Markdown / CSV (including source spans)
-- Apply robust corpus handling (normalization, chunking, sentence ranking, and near-duplicate filtering)
+- **Grounded outputs** linked to source spans.
+- **Consistent schemas** suitable for app and pipeline integrations.
+- **Corpus handling** that normalizes, chunks, ranks, and de-duplicates source material.
+- **Exportability** to JSON, Markdown, and CSV.
 
-### Run Locally
+## Open-QnA Studio (included web app)
 
-Because this is a static app, you can open `index.html` directly, or run a tiny local server:
+This repository includes a static Bootstrap 5 web app (`index.html` + `app.js`) that demonstrates an end-to-end generation flow:
 
+1. Ingest content.
+2. Configure provider/model/options.
+3. Generate Q&A, MCQ, and short written items.
+4. Run fidelity and format checks.
+5. Export output artifacts.
+
+## Quick start
+
+### Option 1: open directly
+Open `index.html` in a browser.
+
+### Option 2: run a local server (recommended)
 ```bash
 python3 -m http.server 8000
 ```
+Then open `http://localhost:8000`.
 
-Then open: `http://localhost:8000`
+## Production-readiness highlights
 
-## Goals
+- **Client-side output escaping** to reduce XSS risk when rendering user-provided source content.
+- **Content-Security-Policy (CSP)** for safer browser execution defaults.
+- **Accessible status announcements** (`aria-live`) and no-script fallback messaging.
+- **Local state persistence** for working sessions via `localStorage`.
+- **CI validation** for HTML and JavaScript syntax on pull requests.
 
-- Accept raw information in many forms (plain text, notes, documentation, transcripts).
-- Produce high-quality learning questions in consistent formats.
-- Support local and hosted LLM providers through a common interface.
-- Make output deterministic and easy to integrate into downstream apps.
+## Provider support model
 
-## Core Workflow
+Open-QnA is intentionally provider-agnostic through a common adapter contract.
 
-1. **Ingest Content**
-   - Input one or more passages.
-   - Optionally chunk long material into sections.
+Supported provider targets in the current design:
+- `llama_cpp` (self-hosted/local)
+- `gpt` (OpenAI)
+- `claude` (Anthropic)
+- `gemini` (Google)
+- `lechat`
 
-2. **Extract Key Facts / Concepts**
-   - Identify entities, definitions, relationships, and procedures.
-   - Rank concepts by relevance and difficulty.
-
-3. **Generate Question Sets**
-   - **Q&A pairs**: direct question + answer.
-   - **MCQs**: stem + one correct option + distractors + answer key.
-   - **Short written questions**: prompts requiring concise written responses.
-
-4. **Quality Controls**
-   - Remove duplicates.
-   - Validate answerability from source text.
-   - Check difficulty, clarity, and format constraints.
-
-5. **Export**
-   - JSON, Markdown, CSV, or API response payloads.
-
-## LLM Provider Support
-
-Open-QnA is designed around a provider adapter layer so any generation pipeline can call a unified API regardless of the backend model provider.
-
-### 1) `llama.cpp` (local/self-hosted)
-Supported model families include:
-- **Mistral Instruct**
-- **Qwen**
-- **Gemma**
-- **Llama**
-
-Typical usage pattern:
-- Run local model server with `llama.cpp`.
-- Configure endpoint URL, model name, and generation parameters (`temperature`, `top_p`, `max_tokens`).
-- Use the `llama_cpp` adapter to generate outputs.
-
-### 2) OpenAI GPT API
-- Configure API key and model id.
-- Use the `gpt` adapter for hosted generation.
-
-### 3) Anthropic Claude API
-- Configure API key and Claude model id.
-- Use the `claude` adapter for hosted generation.
-
-### 4) Google Gemini API
-- Configure API key and Gemini model id.
-- Use the `gemini` adapter for hosted generation.
-
-### 5) LeChat API
-- Configure API key and LeChat model id.
-- Use the `lechat` adapter for hosted generation.
-
-## Suggested Provider-Agnostic Interface
+### Suggested request interface
 
 ```json
 {
@@ -110,70 +76,20 @@ Typical usage pattern:
 }
 ```
 
-## Example Output Schema
+## Quality checklist used by Studio
 
-```json
-{
-  "items": [
-    {
-      "type": "mcq",
-      "question": "What does X primarily describe?",
-      "choices": ["A", "B", "C", "D"],
-      "answer": "B",
-      "explanation": "B is correct because ...",
-      "source_span": "optional citation"
-    },
-    {
-      "type": "qa_pair",
-      "question": "What is Y?",
-      "answer": "Y is ..."
-    },
-    {
-      "type": "short_written",
-      "question": "In 2-3 sentences, explain Z."
-    }
-  ]
-}
-```
+- **Faithfulness**: Is the answer grounded in the source?
+- **Uniqueness**: Are prompts non-duplicative?
+- **Source citation coverage**: Does each item include a source span?
+- **Format validity**: Do all items satisfy required fields?
+- **Distractor quality (MCQ)**: Are options complete and structurally valid?
 
-## Recommended Prompting Strategy
+## Contributing
 
-- Ground each question strictly in provided source material.
-- Request concise and unambiguous answers.
-- For MCQs, require plausible distractors and one uniquely correct answer.
-- Include a short explanation for correctness checks.
-- Enforce output schemas with JSON mode where supported.
-
-## Evaluation Checklist
-
-Use automated checks before publishing generated questions:
-- **Faithfulness**: answer is supported by source text.
-- **Uniqueness**: no duplicate or near-duplicate questions.
-- **Difficulty fit**: question complexity matches selected level.
-- **Format validity**: output conforms to schema.
-- **Distractor quality (MCQ)**: alternatives are plausible but incorrect.
-
-## Minimal Configuration Example
-
-```yaml
-default_provider: llama_cpp
-providers:
-  llama_cpp:
-    base_url: "http://localhost:8080"
-    model: "mistral-instruct"
-  gpt:
-    api_key: "${OPENAI_API_KEY}"
-    model: "gpt-4.1-mini"
-  claude:
-    api_key: "${ANTHROPIC_API_KEY}"
-    model: "claude-3-5-sonnet"
-  gemini:
-    api_key: "${GEMINI_API_KEY}"
-    model: "gemini-1.5-pro"
-  lechat:
-    api_key: "${LECHAT_API_KEY}"
-    model: "lechat-latest"
-```
+Please review:
+- [CONTRIBUTING.md](./CONTRIBUTING.md)
+- [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
+- [SECURITY.md](./SECURITY.md)
 
 ## License
 

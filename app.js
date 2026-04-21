@@ -18,6 +18,7 @@ const els = {
   csvBtn: document.getElementById('csvBtn')
 };
 
+const STORAGE_KEY = 'open-qna-studio:v1';
 let lastOutput = null;
 
 const sampleText = `Relational databases store data in tables with rows and columns.
@@ -26,6 +27,15 @@ A foreign key references a primary key in another table to model relationships.
 Normalization reduces redundancy and improves data integrity.
 SQL SELECT retrieves data; INSERT adds rows; UPDATE modifies data; DELETE removes data.
 Indexes improve query speed but can slow writes because the index must be updated.`;
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
 
 function sentenceSplit(text) {
   return text
@@ -309,10 +319,46 @@ function evaluate(items, sourceText) {
   ];
 }
 
+function saveFormState() {
+  const snapshot = {
+    title: els.title.value,
+    sourceText: els.sourceText.value,
+    provider: els.provider.value,
+    model: els.model.value,
+    count: els.count.value,
+    difficulty: els.difficulty.value,
+    temperature: els.temperature.value
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+}
+
+function restoreFormState() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+
+  try {
+    const state = JSON.parse(raw);
+    if (!state || typeof state !== 'object') return;
+
+    els.title.value = state.title || '';
+    els.sourceText.value = state.sourceText || '';
+    els.provider.value = state.provider || 'llama_cpp';
+    els.model.value = state.model || 'mistral-instruct';
+    els.count.value = clamp(state.count, 3, 20, 8);
+    els.difficulty.value = state.difficulty || 'medium';
+    els.temperature.value = clamp(state.temperature, 0, 1, 0.3);
+  } catch {
+    setStatus('Saved settings could not be restored due to invalid local cache.', 'warning');
+  }
+}
+
 function renderChecklist(results) {
   els.checklist.innerHTML = results
     .map(
-      (r) => `<div class="mb-2"><strong>${r.ok ? '✅' : '⚠️'} ${r.name}</strong><br><span class="small">${r.detail}</span></div>`
+      (r) =>
+        `<div class="mb-2"><strong>${r.ok ? '✅' : '⚠️'} ${escapeHtml(r.name)}</strong><br><span class="small">${escapeHtml(
+          r.detail
+        )}</span></div>`
     )
     .join('');
 }
@@ -320,20 +366,20 @@ function renderChecklist(results) {
 function renderItems(items) {
   els.renderedItems.innerHTML = items
     .map((item) => {
-      const source = `<p class="small mb-0 text-white-75"><em>Source span: ${item.source_span || 'N/A'}</em></p>`;
+      const source = `<p class="small mb-0 text-white-75"><em>Source span: ${escapeHtml(item.source_span || 'N/A')}</em></p>`;
 
       const body =
         item.type === 'mcq'
-          ? `<p class="mb-1"><strong>Q:</strong> ${item.question}</p>
-             <ol class="mb-1">${item.choices.map((c) => `<li>${c}</li>`).join('')}</ol>
-             <p class="mb-1"><strong>Answer:</strong> ${item.answer}</p>
-             <p class="small mb-1 text-white-75"><em>${item.explanation}</em></p>${source}`
+          ? `<p class="mb-1"><strong>Q:</strong> ${escapeHtml(item.question)}</p>
+             <ol class="mb-1">${item.choices.map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ol>
+             <p class="mb-1"><strong>Answer:</strong> ${escapeHtml(item.answer)}</p>
+             <p class="small mb-1 text-white-75"><em>${escapeHtml(item.explanation)}</em></p>${source}`
           : item.type === 'qa_pair'
-            ? `<p class="mb-1"><strong>Q:</strong> ${item.question}</p>
-               <p class="mb-1"><strong>A:</strong> ${item.answer}</p>${source}`
-            : `<p class="mb-1"><strong>Prompt:</strong> ${item.question}</p>${source}`;
+            ? `<p class="mb-1"><strong>Q:</strong> ${escapeHtml(item.question)}</p>
+               <p class="mb-1"><strong>A:</strong> ${escapeHtml(item.answer)}</p>${source}`
+            : `<p class="mb-1"><strong>Prompt:</strong> ${escapeHtml(item.question)}</p>${source}`;
 
-      return `<article class="result-card rounded p-3"><span class="badge badge-type mb-2 text-uppercase">${item.type}</span>${body}</article>`;
+      return `<article class="result-card rounded p-3"><span class="badge badge-type mb-2 text-uppercase">${escapeHtml(item.type)}</span>${body}</article>`;
     })
     .join('');
 }
@@ -390,8 +436,10 @@ function download(filename, text, type) {
   a.download = filename;
   document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(a.href);
-  a.remove();
+  window.setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 0);
 }
 
 function asMarkdown(items) {
@@ -439,12 +487,14 @@ els.generateBtn.addEventListener('click', () => {
   renderChecklist(result.checklist);
   [els.jsonBtn, els.mdBtn, els.csvBtn].forEach((b) => (b.disabled = false));
 
+  saveFormState();
   setStatus('Generated successfully with stronger source-grounded fidelity checks.', 'success');
 });
 
 els.sampleBtn.addEventListener('click', () => {
   els.sourceText.value = sampleText;
   if (!els.title.value.trim()) els.title.value = 'Database Fundamentals';
+  saveFormState();
   setStatus('Sample content loaded.', 'primary');
 });
 
@@ -456,6 +506,7 @@ els.clearBtn.addEventListener('click', () => {
   els.payloadPreview.textContent = '{ }';
   [els.jsonBtn, els.mdBtn, els.csvBtn].forEach((b) => (b.disabled = true));
   lastOutput = null;
+  saveFormState();
   setStatus('Cleared. Ready for new source content.', 'info');
 });
 
@@ -474,3 +525,18 @@ els.csvBtn.addEventListener('click', () => {
   if (!lastOutput) return;
   download('open-qna-output.csv', asCsv(lastOutput.output.items), 'text/csv');
 });
+
+[
+  els.title,
+  els.sourceText,
+  els.provider,
+  els.model,
+  els.count,
+  els.difficulty,
+  els.temperature
+].forEach((el) => {
+  el.addEventListener('input', saveFormState);
+  el.addEventListener('change', saveFormState);
+});
+
+restoreFormState();
