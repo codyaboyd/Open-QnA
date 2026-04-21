@@ -1,0 +1,101 @@
+:root {
+  --bg-start: #191654;
+  --bg-end: #43c6ac;
+  --card-bg: rgba(255, 255, 255, 0.12);
+  --text: #f8f9ff;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--text);
+  background: radial-gradient(circle at top left, #ff00c8 0%, transparent 35%),
+    radial-gradient(circle at bottom right, #00e1ff 0%, transparent 35%),
+    linear-gradient(145deg, var(--bg-start), var(--bg-end));
+  position: relative;
+  overflow-x: hidden;
+}
+
+.text-gradient {
+  background: linear-gradient(90deg, #ffe066, #ff6ec4, #7afcff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-white-75 {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.glass-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text);
+}
+
+.form-control,
+.form-select {
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.btn-magenta {
+  background: linear-gradient(90deg, #ff4ecd, #8b5cf6);
+  color: white;
+  border: none;
+}
+
+.btn-magenta:hover {
+  color: white;
+  filter: brightness(1.08);
+}
+
+.code-block {
+  max-height: 300px;
+  overflow: auto;
+  background: #111827;
+  color: #d1fae5;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  font-size: 0.84rem;
+}
+
+.result-card {
+  border-left: 4px solid #7afcff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.badge-type {
+  background: #ffe066;
+  color: #111;
+}
+
+.bg-orb {
+  position: fixed;
+  z-index: -1;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  filter: blur(18px);
+  opacity: 0.24;
+}
+
+.orb-1 {
+  top: 10%;
+  left: -90px;
+  background: #ff77e1;
+}
+
+.orb-2 {
+  bottom: 8%;
+  right: -70px;
+  background: #6be1ff;
+}
+
+.accordion {
+  --bs-accordion-bg: rgba(255, 255, 255, 0.08);
+  --bs-accordion-color: #f7f9ff;
+  --bs-accordion-border-color: rgba(255, 255, 255, 0.2);
+  --bs-accordion-btn-color: #f7f9ff;
+  --bs-accordion-active-color: #111827;
+  --bs-accordion-active-bg: #b4fffb;
+}
