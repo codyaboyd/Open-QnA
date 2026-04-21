@@ -16,6 +16,7 @@ This repository now includes a colorful Bootstrap 5 web app that demonstrates th
 - Generate Q&A, MCQ, and short written items
 - Run quality checks with source-grounding and traceability checks
 - Export JSON / Markdown / CSV (including source spans)
+- Apply robust corpus handling (normalization, chunking, sentence ranking, and near-duplicate filtering)
 
 ### Run Locally
 
