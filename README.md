@@ -7,6 +7,26 @@ It can generate:
 - **Multiple-choice questions (MCQs)**
 - **Short written questions** (free-response prompts)
 
+## Web App (Bootstrap 5)
+
+This repository now includes a colorful Bootstrap 5 web app that demonstrates the full Open-QnA flow from the README:
+
+- Ingest source content
+- Configure provider/model/options
+- Generate Q&A, MCQ, and short written items
+- Run quality checks
+- Export JSON / Markdown / CSV
+
+### Run Locally
+
+Because this is a static app, you can open `index.html` directly, or run a tiny local server:
+
+```bash
+python3 -m http.server 8000
+```
+
+Then open: `http://localhost:8000`
+
 ## Goals
 
 - Accept raw information in many forms (plain text, notes, documentation, transcripts).
