@@ -53,7 +53,15 @@
 
               <div class="col-sm-6">
                 <label for="model" class="form-label">Model</label>
-                <input id="model" class="form-control" value="mistral-instruct" autocomplete="off" />
+                <input id="model" class="form-control" value="gpt-4o-mini" autocomplete="off" />
+                <select id="llamaCppModel" class="form-select d-none" aria-label="llama.cpp model selection"></select>
+                <div id="llamaCppModelHelp" class="form-text d-none">Choose a prompt-compatible model preset for llama.cpp.</div>
+              </div>
+
+              <div class="col-12 d-none" id="llamaCppServerGroup">
+                <label for="llamaCppServerUrl" class="form-label">llama.cpp Server URL</label>
+                <input id="llamaCppServerUrl" class="form-control" type="url" placeholder="http://127.0.0.1:8080" autocomplete="off" />
+                <div class="form-text">Example: <code>http://127.0.0.1:8080</code> or your LAN IP URL.</div>
               </div>
 
               <div class="col-sm-4">
