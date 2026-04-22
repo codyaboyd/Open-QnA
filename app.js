@@ -3,6 +3,10 @@ const els = {
   sourceText: document.getElementById('sourceText'),
   provider: document.getElementById('provider'),
   model: document.getElementById('model'),
+  llamaCppModel: document.getElementById('llamaCppModel'),
+  llamaCppModelHelp: document.getElementById('llamaCppModelHelp'),
+  llamaCppServerGroup: document.getElementById('llamaCppServerGroup'),
+  llamaCppServerUrl: document.getElementById('llamaCppServerUrl'),
   count: document.getElementById('count'),
   difficulty: document.getElementById('difficulty'),
   temperature: document.getElementById('temperature'),
@@ -20,6 +24,16 @@ const els = {
 
 const STORAGE_KEY = 'open-qna-studio:v1';
 let lastOutput = null;
+
+const LLAMA_CPP_MODELS = [
+  { value: 'llama-3.1-instruct', label: 'Llama 3.1 Instruct' },
+  { value: 'llama-3.2-instruct', label: 'Llama 3.2 Instruct' },
+  { value: 'mistral-instruct', label: 'Mistral Instruct' },
+  { value: 'mixtral-instruct', label: 'Mixtral Instruct' },
+  { value: 'qwen2.5-instruct', label: 'Qwen 2.5 Instruct' },
+  { value: 'phi-3-instruct', label: 'Phi-3 Instruct' },
+  { value: 'gemma-2-instruct', label: 'Gemma 2 Instruct' }
+];
 
 const sampleText = `Relational databases store data in tables with rows and columns.
 A primary key uniquely identifies each row in a table.
@@ -320,16 +334,36 @@ function evaluate(items, sourceText) {
 }
 
 function saveFormState() {
+  const model = els.provider.value === 'llama_cpp' ? els.llamaCppModel.value : els.model.value;
   const snapshot = {
     title: els.title.value,
     sourceText: els.sourceText.value,
     provider: els.provider.value,
-    model: els.model.value,
+    model,
+    llamaCppServerUrl: els.llamaCppServerUrl.value,
     count: els.count.value,
     difficulty: els.difficulty.value,
     temperature: els.temperature.value
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+}
+
+function populateLlamaCppModels() {
+  els.llamaCppModel.innerHTML = LLAMA_CPP_MODELS.map(
+    (model) => `<option value="${escapeHtml(model.value)}">${escapeHtml(model.label)}</option>`
+  ).join('');
+}
+
+function toggleProviderFields() {
+  const isLlamaCpp = els.provider.value === 'llama_cpp';
+  els.model.classList.toggle('d-none', isLlamaCpp);
+  els.llamaCppModel.classList.toggle('d-none', !isLlamaCpp);
+  els.llamaCppModelHelp.classList.toggle('d-none', !isLlamaCpp);
+  els.llamaCppServerGroup.classList.toggle('d-none', !isLlamaCpp);
+
+  if (isLlamaCpp && !els.llamaCppModel.value) {
+    els.llamaCppModel.value = LLAMA_CPP_MODELS[0].value;
+  }
 }
 
 function restoreFormState() {
@@ -343,10 +377,14 @@ function restoreFormState() {
     els.title.value = state.title || '';
     els.sourceText.value = state.sourceText || '';
     els.provider.value = state.provider || 'llama_cpp';
-    els.model.value = state.model || 'mistral-instruct';
+    const savedModel = state.model || 'llama-3.1-instruct';
+    els.model.value = savedModel;
+    els.llamaCppModel.value = savedModel;
+    els.llamaCppServerUrl.value = state.llamaCppServerUrl || 'http://127.0.0.1:8080';
     els.count.value = clamp(state.count, 3, 20, 8);
     els.difficulty.value = state.difficulty || 'medium';
     els.temperature.value = clamp(state.temperature, 0, 1, 0.3);
+    toggleProviderFields();
   } catch {
     setStatus('Saved settings could not be restored due to invalid local cache.', 'warning');
   }
@@ -398,9 +436,10 @@ function buildPayload() {
     return null;
   }
 
+  const selectedModel = els.provider.value === 'llama_cpp' ? els.llamaCppModel.value : els.model.value.trim() || 'model-not-set';
   const payload = {
     provider: els.provider.value,
-    model: els.model.value.trim() || 'model-not-set',
+    model: selectedModel,
     task: 'qa_pairs | mcq | short_written',
     input: {
       title: els.title.value.trim() || 'Untitled',
@@ -417,6 +456,12 @@ function buildPayload() {
       temperature: clamp(els.temperature.value, 0, 1, 0.3)
     }
   };
+
+  if (els.provider.value === 'llama_cpp') {
+    payload.provider_config = {
+      server_url: els.llamaCppServerUrl.value.trim() || 'http://127.0.0.1:8080'
+    };
+  }
 
   const items = buildItems(sentences, count, els.difficulty.value, inputText);
   const checklist = evaluate(items, inputText);
@@ -539,4 +584,15 @@ els.csvBtn.addEventListener('click', () => {
   el.addEventListener('change', saveFormState);
 });
 
+els.provider.addEventListener('change', () => {
+  toggleProviderFields();
+  saveFormState();
+});
+
+els.llamaCppModel.addEventListener('change', saveFormState);
+els.llamaCppServerUrl.addEventListener('input', saveFormState);
+els.llamaCppServerUrl.addEventListener('change', saveFormState);
+
+populateLlamaCppModels();
 restoreFormState();
+toggleProviderFields();
