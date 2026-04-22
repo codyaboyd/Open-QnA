@@ -76,7 +76,7 @@ Supported provider targets in the current design:
 }
 ```
 
-## Quality checklist used by Studio
+## Quality checklist used
 
 - **Faithfulness**: Is the answer grounded in the source?
 - **Uniqueness**: Are prompts non-duplicative?
