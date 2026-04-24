@@ -3,6 +3,12 @@ const els = {
   sourceText: document.getElementById('sourceText'),
   provider: document.getElementById('provider'),
   model: document.getElementById('model'),
+  openAiConfigGroup: document.getElementById('openAiConfigGroup'),
+  openAiApiKey: document.getElementById('openAiApiKey'),
+  openAiModel: document.getElementById('openAiModel'),
+  claudeConfigGroup: document.getElementById('claudeConfigGroup'),
+  claudeApiKey: document.getElementById('claudeApiKey'),
+  claudeModel: document.getElementById('claudeModel'),
   llamaCppModel: document.getElementById('llamaCppModel'),
   llamaCppModelHelp: document.getElementById('llamaCppModelHelp'),
   llamaCppServerGroup: document.getElementById('llamaCppServerGroup'),
@@ -33,6 +39,20 @@ const LLAMA_CPP_MODELS = [
   { value: 'qwen2.5-instruct', label: 'Qwen 2.5 Instruct' },
   { value: 'phi-3-instruct', label: 'Phi-3 Instruct' },
   { value: 'gemma-2-instruct', label: 'Gemma 2 Instruct' }
+];
+
+const OPENAI_MODELS = [
+  { value: 'gpt-4o-mini', label: 'GPT-4o mini' },
+  { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini' },
+  { value: 'gpt-4.1', label: 'GPT-4.1' },
+  { value: 'o4-mini', label: 'o4-mini' }
+];
+
+const CLAUDE_MODELS = [
+  { value: 'claude-3-5-haiku-latest', label: 'Claude 3.5 Haiku (latest)' },
+  { value: 'claude-3-7-sonnet-latest', label: 'Claude 3.7 Sonnet (latest)' },
+  { value: 'claude-sonnet-4-0', label: 'Claude Sonnet 4.0' },
+  { value: 'claude-opus-4-0', label: 'Claude Opus 4.0' }
 ];
 
 const sampleText = `Relational databases store data in tables with rows and columns.
@@ -334,12 +354,16 @@ function evaluate(items, sourceText) {
 }
 
 function saveFormState() {
-  const model = els.provider.value === 'llama_cpp' ? els.llamaCppModel.value : els.model.value;
+  const model = getSelectedModel();
   const snapshot = {
     title: els.title.value,
     sourceText: els.sourceText.value,
     provider: els.provider.value,
     model,
+    openAiApiKey: els.openAiApiKey.value,
+    openAiModel: els.openAiModel.value,
+    claudeApiKey: els.claudeApiKey.value,
+    claudeModel: els.claudeModel.value,
     llamaCppServerUrl: els.llamaCppServerUrl.value,
     count: els.count.value,
     difficulty: els.difficulty.value,
@@ -354,15 +378,43 @@ function populateLlamaCppModels() {
   ).join('');
 }
 
+function populateProviderModels() {
+  els.openAiModel.innerHTML = OPENAI_MODELS.map(
+    (model) => `<option value="${escapeHtml(model.value)}">${escapeHtml(model.label)}</option>`
+  ).join('');
+  els.claudeModel.innerHTML = CLAUDE_MODELS.map(
+    (model) => `<option value="${escapeHtml(model.value)}">${escapeHtml(model.label)}</option>`
+  ).join('');
+}
+
+function getSelectedModel() {
+  if (els.provider.value === 'llama_cpp') return els.llamaCppModel.value;
+  if (els.provider.value === 'gpt') return els.openAiModel.value;
+  if (els.provider.value === 'claude') return els.claudeModel.value;
+  return els.model.value.trim() || 'model-not-set';
+}
+
 function toggleProviderFields() {
   const isLlamaCpp = els.provider.value === 'llama_cpp';
-  els.model.classList.toggle('d-none', isLlamaCpp);
+  const isOpenAi = els.provider.value === 'gpt';
+  const isClaude = els.provider.value === 'claude';
+  const showFreeformModel = !isLlamaCpp && !isOpenAi && !isClaude;
+
+  els.model.classList.toggle('d-none', !showFreeformModel);
   els.llamaCppModel.classList.toggle('d-none', !isLlamaCpp);
   els.llamaCppModelHelp.classList.toggle('d-none', !isLlamaCpp);
   els.llamaCppServerGroup.classList.toggle('d-none', !isLlamaCpp);
+  els.openAiConfigGroup.classList.toggle('d-none', !isOpenAi);
+  els.claudeConfigGroup.classList.toggle('d-none', !isClaude);
 
   if (isLlamaCpp && !els.llamaCppModel.value) {
     els.llamaCppModel.value = LLAMA_CPP_MODELS[0].value;
+  }
+  if (isOpenAi && !els.openAiModel.value) {
+    els.openAiModel.value = OPENAI_MODELS[0].value;
+  }
+  if (isClaude && !els.claudeModel.value) {
+    els.claudeModel.value = CLAUDE_MODELS[0].value;
   }
 }
 
@@ -380,6 +432,10 @@ function restoreFormState() {
     const savedModel = state.model || 'llama-3.1-instruct';
     els.model.value = savedModel;
     els.llamaCppModel.value = savedModel;
+    els.openAiApiKey.value = state.openAiApiKey || '';
+    els.openAiModel.value = state.openAiModel || OPENAI_MODELS[0].value;
+    els.claudeApiKey.value = state.claudeApiKey || '';
+    els.claudeModel.value = state.claudeModel || CLAUDE_MODELS[0].value;
     els.llamaCppServerUrl.value = state.llamaCppServerUrl || 'http://127.0.0.1:8080';
     els.count.value = clamp(state.count, 3, 20, 8);
     els.difficulty.value = state.difficulty || 'medium';
@@ -436,7 +492,7 @@ function buildPayload() {
     return null;
   }
 
-  const selectedModel = els.provider.value === 'llama_cpp' ? els.llamaCppModel.value : els.model.value.trim() || 'model-not-set';
+  const selectedModel = getSelectedModel();
   const payload = {
     provider: els.provider.value,
     model: selectedModel,
@@ -460,6 +516,16 @@ function buildPayload() {
   if (els.provider.value === 'llama_cpp') {
     payload.provider_config = {
       server_url: els.llamaCppServerUrl.value.trim() || 'http://127.0.0.1:8080'
+    };
+  }
+  if (els.provider.value === 'gpt') {
+    payload.provider_config = {
+      api_key: els.openAiApiKey.value.trim() || 'not-set'
+    };
+  }
+  if (els.provider.value === 'claude') {
+    payload.provider_config = {
+      api_key: els.claudeApiKey.value.trim() || 'not-set'
     };
   }
 
@@ -592,7 +658,14 @@ els.provider.addEventListener('change', () => {
 els.llamaCppModel.addEventListener('change', saveFormState);
 els.llamaCppServerUrl.addEventListener('input', saveFormState);
 els.llamaCppServerUrl.addEventListener('change', saveFormState);
+els.openAiApiKey.addEventListener('input', saveFormState);
+els.openAiApiKey.addEventListener('change', saveFormState);
+els.openAiModel.addEventListener('change', saveFormState);
+els.claudeApiKey.addEventListener('input', saveFormState);
+els.claudeApiKey.addEventListener('change', saveFormState);
+els.claudeModel.addEventListener('change', saveFormState);
 
 populateLlamaCppModels();
+populateProviderModels();
 restoreFormState();
 toggleProviderFields();

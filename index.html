@@ -58,6 +58,32 @@
                 <div id="llamaCppModelHelp" class="form-text d-none">Choose a prompt-compatible model preset for llama.cpp.</div>
               </div>
 
+              <div class="col-12 d-none" id="openAiConfigGroup">
+                <div class="row g-3">
+                  <div class="col-sm-6">
+                    <label for="openAiApiKey" class="form-label">OpenAI API Key</label>
+                    <input id="openAiApiKey" class="form-control" type="password" placeholder="sk-..." autocomplete="off" />
+                  </div>
+                  <div class="col-sm-6">
+                    <label for="openAiModel" class="form-label">OpenAI Model</label>
+                    <select id="openAiModel" class="form-select" aria-label="OpenAI model selection"></select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-12 d-none" id="claudeConfigGroup">
+                <div class="row g-3">
+                  <div class="col-sm-6">
+                    <label for="claudeApiKey" class="form-label">Claude API Key</label>
+                    <input id="claudeApiKey" class="form-control" type="password" placeholder="sk-ant-..." autocomplete="off" />
+                  </div>
+                  <div class="col-sm-6">
+                    <label for="claudeModel" class="form-label">Claude Model</label>
+                    <select id="claudeModel" class="form-select" aria-label="Claude model selection"></select>
+                  </div>
+                </div>
+              </div>
+
               <div class="col-12 d-none" id="llamaCppServerGroup">
                 <label for="llamaCppServerUrl" class="form-label">llama.cpp Server URL</label>
                 <input id="llamaCppServerUrl" class="form-control" type="url" placeholder="http://127.0.0.1:8080" autocomplete="off" />
